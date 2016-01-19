@@ -82,7 +82,7 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 	if index_exists == false {
 		// Elastigo is nice, but a pain for putting mappings. Just use a http call.
 		request := r.New()
-		resp, body, errm := request.Post(connect_string).Send(defaultMapping).End()
+		_, body, errm := request.Post(connect_string).Send(defaultMapping).End()
 		if len(errm) > 0 {
 			for _, m := range errm {
 				fmt.Printf("[%s] ERROR Elasticsearch mapping error received: %s\n", ts, m)

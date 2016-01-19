@@ -1,0 +1,32 @@
+redis_connection: "localhost:6379"
+redis_db: 9
+redis_list: "mylist"
+redis_watch_interval: 3000
+redis_is_cluster: false
+debug: false
+sends:
+    mail:
+        operations:
+            mail_host: "localhost"
+            mail_to: "target@host.com"
+            mail_from: "host@host.com"
+            mail_port: 25
+        default:
+            mail_host: "localhost"
+            mail_to: "target@host.com"
+            mail_from: "host@host.com"
+            mail_port: 25
+    slack:
+        operations:
+            slack_token: "mysuperlongtokenhash"
+            slack_channel: "operations"
+        default:
+            slack_token: "mysuperlongtokenhash"
+            slack_channel: "missioncontrol"
+    elasticsearch:
+        operations:
+            host: "es1.host.com"
+            port: 9200
+        default:
+            host: "es1.host.com"
+            port: 9200

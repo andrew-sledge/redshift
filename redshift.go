@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	//"errors"
+	"errors"
 	//"flag"
 	"fmt"
 	s "github.com/andrew-sledge/redshift/sends"
@@ -26,21 +26,52 @@ func StringInSlice(a string, list []string) bool {
 	return false
 }
 
-func Pull(settings *yaml.Yaml, senders []string) {
+func Send(ts string, data []byte, settings *yaml.Yaml, senders []string) error {
+
+	debug := settings.Get("debug").(bool)
+
+	var message s.Message
+	err := json.Unmarshal(data, &message)
+	if err != nil {
+		e := fmt.Sprintf("[%s] ERROR Error received: %s\n", ts, err)
+		return errors.New(e)
+	}
+
+	// Fan out to sends
+	var sr s.SendRunner
+	var payload s.Payload
+	payload.Message = message
+	payload.ProcessTime = ts
+	payload.Settings = *settings
+	var payloads []s.Payload
+
+	payloads = append(payloads, payload)
+	in := make([]reflect.Value, len(payloads))
+
+	for i, param := range payloads {
+		in[i] = reflect.ValueOf(param)
+	}
+
+	for _, send_func := range senders {
+		reflect.ValueOf(&sr).MethodByName(send_func).Call(in)
+		if debug {
+			fmt.Printf("[%s] INFO Message %+v successfully sent to %s.", ts, message, send_func)
+		}
+	}
+	return nil
+}
+
+func PullNode(settings *yaml.Yaml, senders []string) {
 
 	debug := settings.Get("debug").(bool)
 	redis_connection := settings.Get("redis_connection").(string)
-	redis_db := settings.Get("redis_db").(int)
 	redis_list := settings.Get("redis_list").(string)
 	redis_watch_interval := settings.Get("redis_watch_interval").(int)
+	redis_db := settings.Get("redis_db").(int)
 
-	/*
-		Using a FIFO queue
-	*/
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-	rc, err := cluster.NewCluster(redis_connection)
-
+	rc, err := redis.Dial("tcp", redis_connection)
 	s.CheckError(err, true)
 	r := rc.Cmd("SELECT", redis_db)
 
@@ -65,32 +96,69 @@ func Pull(settings *yaml.Yaml, senders []string) {
 			if err != nil {
 				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
 			} else {
-				var message s.Message
-				err := json.Unmarshal(data, &message)
+				// TODO: Clean up error printing
+				err := Send(ts, data, settings, senders)
 				if err != nil {
-					fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
+					fmt.Printf(err.Error())
 				}
+			}
+		case redis.MultiReply:
+			if debug {
+				fmt.Printf("[%s] INFO MultiReply reply received: not processing\n", ts)
+			}
+		case redis.IntegerReply:
+			if debug {
+				fmt.Printf("[%s] INFO IntegerReply reply received: not processing\n", ts)
+			}
+		default:
+			if debug {
+				fmt.Printf("[%s] INFO Unknown reply received: not processing\n", ts)
+			}
+		}
 
-				// Fan out to sends
-				var sr s.SendRunner
-				var payload s.Payload
-				payload.Message = message
-				payload.ProcessTime = ts
-				payload.Settings = *settings
-				var payloads []s.Payload
+		time.Sleep(time.Duration(redis_watch_interval) * time.Millisecond)
+	}
 
-				payloads = append(payloads, payload)
-				in := make([]reflect.Value, len(payloads))
+}
 
-				for i, param := range payloads {
-					in[i] = reflect.ValueOf(param)
-				}
+func PullCluster(settings *yaml.Yaml, senders []string) {
 
-				for _, send_func := range senders {
-					reflect.ValueOf(&sr).MethodByName(send_func).Call(in)
-					if debug {
-						fmt.Printf("[%s] INFO Message %+v successfully sent to %s.", ts, message, send_func)
-					}
+	debug := settings.Get("debug").(bool)
+	redis_connection := settings.Get("redis_connection").(string)
+	redis_list := settings.Get("redis_list").(string)
+	redis_watch_interval := settings.Get("redis_watch_interval").(int)
+
+	t := time.Now()
+	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
+	rc, err := cluster.NewCluster(redis_connection)
+	r := rc.Cmd("SELECT", 0)
+	s.CheckError(err, true)
+
+	for {
+		t = time.Now()
+		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
+		r = rc.Cmd("RPOP", redis_list)
+
+		switch r.Type {
+		case redis.ErrorReply:
+			fmt.Printf("[%s] ERROR ErrorReply received: %s\n", ts, r.Err.Error())
+		case redis.NilReply:
+			if debug {
+				fmt.Printf("[%s] INFO NilReply reply received\n", ts)
+			}
+		case redis.StatusReply:
+			if debug {
+				fmt.Printf("[%s] INFO StatusReply reply received: not processing\n", ts)
+			}
+		case redis.BulkReply:
+			data, err := r.Bytes()
+			if err != nil {
+				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
+			} else {
+				// TODO: Clean up error printing
+				err := Send(ts, data, settings, senders)
+				if err != nil {
+					fmt.Printf(err.Error())
 				}
 			}
 		case redis.MultiReply:
@@ -133,5 +201,14 @@ func main() {
 		senders = append(senders, n)
 	}
 
-	Pull(settings, senders)
+	// There's probably a better way to do this
+	redis_is_cluster := settings.Get("redis_is_cluster").(bool)
+	if redis_is_cluster {
+		fmt.Println("Cluster mode")
+		PullCluster(settings, senders)
+	} else {
+		fmt.Println("Single node mode")
+		PullNode(settings, senders)
+	}
+
 }

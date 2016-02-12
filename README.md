@@ -5,7 +5,7 @@ Read from a Redis list and fan out to many endpoints. Complementary to [blueshif
 * Finish sends/mail endpoint
 * Finish sends/slack endpoint for chatops
 * Group::source level configuration instead of just group level configuration
-* Redis cluster/non-cluster modes (right now just in cluster mode)
+* ~~Redis cluster/non-cluster modes (right now just in cluster mode)~~
 * Better documentation
 * Dependency building
 * Probably more stuff.

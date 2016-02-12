@@ -210,6 +210,7 @@ func main() {
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
 	debug := settings.Get("debug").(bool)
+	// Cluster mode
 	if redis_is_cluster {
 		if debug {
 			fmt.Printf("[%s] INFO Starting up in cluster mode\n", ts)

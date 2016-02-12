@@ -3,16 +3,13 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	//"flag"
 	"fmt"
 	s "github.com/andrew-sledge/redshift/sends"
 	"github.com/fzzy/radix/extra/cluster"
 	"github.com/fzzy/radix/redis"
 	"menteslibres.net/gosexy/yaml"
-	"reflect"
-	//"io/ioutil"
 	"os"
-	//"strconv"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -75,6 +72,8 @@ func PullNode(settings *yaml.Yaml, senders []string) {
 	s.CheckError(err, true)
 	r := rc.Cmd("SELECT", redis_db)
 
+	defer rc.Close()
+
 	for {
 		t = time.Now()
 		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
@@ -134,6 +133,8 @@ func PullCluster(settings *yaml.Yaml, senders []string) {
 	r := rc.Cmd("SELECT", 0)
 	s.CheckError(err, true)
 
+	defer rc.Close()
+
 	for {
 		t = time.Now()
 		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
@@ -152,6 +153,9 @@ func PullCluster(settings *yaml.Yaml, senders []string) {
 			}
 		case redis.BulkReply:
 			data, err := r.Bytes()
+			if debug {
+				fmt.Printf("[%s] INFO BulkReply reply received. Data length %d\n", ts, len(data))
+			}
 			if err != nil {
 				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
 			} else {
@@ -203,11 +207,18 @@ func main() {
 
 	// There's probably a better way to do this
 	redis_is_cluster := settings.Get("redis_is_cluster").(bool)
+	t := time.Now()
+	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
+	debug := settings.Get("debug").(bool)
 	if redis_is_cluster {
-		fmt.Println("Cluster mode")
+		if debug {
+			fmt.Printf("[%s] INFO Starting up in cluster mode\n", ts)
+		}
 		PullCluster(settings, senders)
 	} else {
-		fmt.Println("Single node mode")
+		if debug {
+			fmt.Printf("[%s] INFO Starting up in single node mode\n", ts)
+		}
 		PullNode(settings, senders)
 	}
 

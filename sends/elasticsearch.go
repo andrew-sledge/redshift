@@ -36,73 +36,96 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 	if debug {
 		fmt.Printf("[%s] INFO Elasticsearch source: %s\n", ts, source)
 	}
-	host := payload.Settings.Get("sends", "elasticsearch", group, "host").(string)
-	if debug {
-		fmt.Printf("[%s] INFO Elasticsearch host: %s\n", ts, host)
-	}
-	port := payload.Settings.Get("sends", "elasticsearch", group, "port").(int)
-	if debug {
-		fmt.Printf("[%s] INFO Elasticsearch port: %d\n", ts, port)
-	}
+	host_interface := payload.Settings.Get("sends", "elasticsearch", group, "host")
+	port_interface := payload.Settings.Get("sends", "elasticsearch", group, "port")
 
-	connect_string := fmt.Sprintf("http://%s:%d/%s", host, port, group)
+	var host string
+	var port int
 
-	type ESMessage struct {
-		Timestamp JSONTime `json:"@timestamp"`
-		Timein    string   `json:"time_in"`
-		Subject   string   `json:"subject"`
-		Detail    string   `json:"detail"`
-		Severity  int      `json:"severity"`
-		Extra     string   `json:"extra"`
-	}
-
-	var esm ESMessage
-	esm.Timestamp = JSONTime(t)
-	esm.Timein = payload.Message.Timestamp
-	esm.Subject = payload.Message.Subject
-	esm.Detail = payload.Message.Detail
-	esm.Severity = payload.Message.Severity
-	esm.Extra = payload.Message.Extra
-
-	e := ego.NewConn()
-	e.Domain = host
-	if debug {
-		fmt.Printf("[%s] INFO Connected to Elasticsearch host %s\n", ts, host)
-	}
-
-	// Check to see if index exists, if not apply mapping
-	index_exists, erri := e.IndicesExists(group)
-	if erri != nil {
-		fmt.Printf("[%s] ERROR Elasticsearch index search error received: %s\n", ts, erri)
-	}
-	if debug {
-		fmt.Printf("[%s] INFO Response from Elasticsearch index search: %s\n", ts, index_exists)
-	}
-
-	if index_exists == false {
-		// Elastigo is nice, but a pain for putting mappings. Just use a http call.
-		request := r.New()
-		_, body, errm := request.Post(connect_string).Send(defaultMapping).End()
-		if len(errm) > 0 {
-			for _, m := range errm {
-				fmt.Printf("[%s] ERROR Elasticsearch mapping error received: %s\n", ts, m)
-			}
+	if host_interface == nil || port_interface == nil {
+		host_interface2 := payload.Settings.Get("sends", "elasticsearch", "default", "host")
+		port_interface2 := payload.Settings.Get("sends", "elasticsearch", "default", "port")
+		if host_interface2 == nil || port_interface2 == nil {
+			// TODO: we can do better than this
+			// Hard code a default
+			host = "localhost"
+			port = 9200
 		} else {
-			if strings.Contains(body, "{\"acknowledged\":true}") {
-				if debug {
-					fmt.Printf("[%s] INFO Elasticsearch mapping completed.\n", ts)
+			host = host_interface2.(string)
+			port = port_interface2.(int)
+		}
+	} else {
+		host = host_interface.(string)
+		port = port_interface.(int)
+	}
+
+	if len(host) > 0 && port > 0 {
+		if debug {
+			fmt.Printf("[%s] INFO Elasticsearch host: %s\n", ts, host)
+			fmt.Printf("[%s] INFO Elasticsearch port: %d\n", ts, port)
+		}
+
+		connect_string := fmt.Sprintf("http://%s:%d/%s", host, port, group)
+
+		type ESMessage struct {
+			Timestamp JSONTime `json:"@timestamp"`
+			Timein    string   `json:"time_in"`
+			Subject   string   `json:"subject"`
+			Detail    string   `json:"detail"`
+			Magnitude int      `json:"magnitude"`
+			Severity  int      `json:"severity"`
+			Extra     string   `json:"extra"`
+		}
+
+		var esm ESMessage
+		esm.Timestamp = JSONTime(t)
+		esm.Timein = payload.Message.Timestamp
+		esm.Subject = payload.Message.Subject
+		esm.Detail = payload.Message.Detail
+		esm.Severity = payload.Message.Severity
+		esm.Magnitude = payload.Message.Magnitude
+		esm.Extra = payload.Message.Extra
+
+		e := ego.NewConn()
+		e.Domain = host
+		if debug {
+			fmt.Printf("[%s] INFO Connected to Elasticsearch host %s\n", ts, host)
+		}
+
+		// Check to see if index exists, if not apply mapping
+		index_exists, erri := e.IndicesExists(group)
+		if erri != nil {
+			fmt.Printf("[%s] ERROR Elasticsearch index search error received: %s\n", ts, erri)
+		}
+		if debug {
+			fmt.Printf("[%s] INFO Response from Elasticsearch index search: %s\n", ts, index_exists)
+		}
+
+		if index_exists == false {
+			// Elastigo is nice, but a pain for putting mappings. Just use a http call.
+			request := r.New()
+			_, body, errm := request.Post(connect_string).Send(defaultMapping).End()
+			if len(errm) > 0 {
+				for _, m := range errm {
+					fmt.Printf("[%s] ERROR Elasticsearch mapping error received: %s\n", ts, m)
 				}
 			} else {
-				fmt.Printf("[%s] ERROR Elasticsearch mapping error received: %s\n", ts, body)
+				if strings.Contains(body, "{\"acknowledged\":true}") {
+					if debug {
+						fmt.Printf("[%s] INFO Elasticsearch mapping completed.\n", ts)
+					}
+				} else {
+					fmt.Printf("[%s] ERROR Elasticsearch mapping error received: %s\n", ts, body)
+				}
 			}
 		}
-	}
 
-	response, errs := e.Index(group, source, "", nil, esm)
-	if errs != nil {
-		fmt.Printf("[%s] ERROR Elasticsearch indexing error received: %s\n", ts, errs)
-	}
-	if debug {
-		fmt.Printf("[%s] INFO Response from Elasticsearch host: %+v\n", ts, response)
+		response, errs := e.Index(group, source, "", nil, esm)
+		if errs != nil {
+			fmt.Printf("[%s] ERROR Elasticsearch indexing error received: %s\n", ts, errs)
+		}
+		if debug {
+			fmt.Printf("[%s] INFO Response from Elasticsearch host: %+v\n", ts, response)
+		}
 	}
 }

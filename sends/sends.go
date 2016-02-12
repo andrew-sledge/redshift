@@ -13,6 +13,7 @@ type Message struct {
 	Source    string
 	Subject   string
 	Detail    string
+	Magnitude int
 	Severity  int
 	Extra     string
 }

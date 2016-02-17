@@ -16,6 +16,15 @@ sends:
             mail_to: "target@host.com"
             mail_from: "host@host.com"
             mail_port: 25
+    file:
+        operations:
+            file_path: "/var/log/redshift-operations.log"
+            translate_syslog: true
+            include_timestamp: true
+        default:
+            file_path: "/var/log/redshift.log"
+            translate_syslog: true
+            include_timestamp: true
     slack:
         operations:
             slack_token: "mysuperlongtokenhash"

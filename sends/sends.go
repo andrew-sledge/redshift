@@ -14,6 +14,7 @@ type Message struct {
 	Subject   string
 	Detail    string
 	Magnitude int
+	Floater   float32
 	Severity  int
 	Extra     string
 }

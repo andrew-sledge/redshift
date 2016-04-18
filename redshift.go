@@ -68,7 +68,7 @@ func PullNode(settings *yaml.Yaml, senders []string) {
 
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-	rc, err := redis.Dial("tcp", redis_connection)
+	rc, err := redis.DialTimeout("tcp", redis_connection, time.Duration(10)*time.Second)
 	s.CheckError(err, true)
 	r := rc.Cmd("SELECT", redis_db)
 
@@ -129,7 +129,7 @@ func PullCluster(settings *yaml.Yaml, senders []string) {
 
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-	rc, err := cluster.NewCluster(redis_connection)
+	rc, err := cluster.NewClusterTimeout(redis_connection, time.Duration(10)*time.Second)
 	r := rc.Cmd("SELECT", 0)
 	s.CheckError(err, true)
 

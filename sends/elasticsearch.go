@@ -73,6 +73,7 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 			Subject   string   `json:"subject"`
 			Detail    string   `json:"detail"`
 			Magnitude int      `json:"magnitude"`
+			Floater   float32  `json:"floater"`
 			Severity  int      `json:"severity"`
 			Extra     string   `json:"extra"`
 		}
@@ -84,6 +85,7 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 		esm.Detail = payload.Message.Detail
 		esm.Severity = payload.Message.Severity
 		esm.Magnitude = payload.Message.Magnitude
+		esm.Floater = payload.Message.Floater
 		esm.Extra = payload.Message.Extra
 
 		e := ego.NewConn()

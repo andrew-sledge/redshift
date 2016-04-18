@@ -54,8 +54,7 @@ func post(rtm *slack.RTM, channel string, message Message, debug bool) {
 	}
 	params.Attachments = []slack.Attachment{attachment}
 
-	title := fmt.Sprintf("Alert *%s* with Severity %d (Magnitude: %d)", message.Subject, message.Severity, message.Magnitude)
-
+	title := fmt.Sprintf("Alert *%s* with Severity %d (Magnitude: %d, Floater: %.4f)", message.Subject, message.Severity, message.Magnitude, message.Floater)
 	channelID, timestamp, err := rtm.PostMessage(channel, title, params)
 	if err != nil {
 		fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
@@ -172,6 +171,7 @@ func (sr *SendRunner) SlackGo(payload Payload) {
 			}
 		}
 
+		//defer rtm.Disconnect()
 		post(rtm, channel, payload.Message, debug)
 	}
 

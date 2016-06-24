@@ -46,10 +46,8 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 		host_interface2 := payload.Settings.Get("sends", "elasticsearch", "default", "host")
 		port_interface2 := payload.Settings.Get("sends", "elasticsearch", "default", "port")
 		if host_interface2 == nil || port_interface2 == nil {
-			// TODO: we can do better than this
-			// Hard code a default
-			host = "localhost"
-			port = 9200
+			host = ""
+			port = 0
 		} else {
 			host = host_interface2.(string)
 			port = port_interface2.(int)
@@ -129,5 +127,5 @@ func (sr *SendRunner) ElasticsearchGo(payload Payload) {
 		if debug {
 			fmt.Printf("[%s] INFO Response from Elasticsearch host: %+v\n", ts, response)
 		}
-	}
+	} // treat empty values as a no-op
 }

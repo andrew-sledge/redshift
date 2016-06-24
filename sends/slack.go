@@ -162,18 +162,13 @@ func (sr *SendRunner) SlackGo(payload Payload) {
 			os.Exit(1)
 		}
 
-		if len(token) == 0 || len(channel) == 0 {
-			fmt.Printf("[%s] ERROR Slack Token or Slack Channel not specified\n", ts)
-			os.Exit(1)
-		} else {
-			if debug {
-				fmt.Printf("[%s] INFO Joining Slack channel #%s with token %s\n", ts, channel_name, token)
-			}
+		if debug {
+			fmt.Printf("[%s] INFO Joining Slack channel #%s with token %s\n", ts, channel_name, token)
 		}
 
 		//defer rtm.Disconnect()
 		post(rtm, channel, payload.Message, debug)
-	}
+	} // treat empty as a no-op
 
 	// Coming soon!
 	//go post(rtm, channel, payload.Message, debug)

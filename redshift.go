@@ -58,130 +58,18 @@ func Send(ts string, data []byte, settings *yaml.Yaml, senders []string) error {
 	return nil
 }
 
-func PullNode(settings *yaml.Yaml, senders []string) {
-
-	debug := settings.Get("debug").(bool)
+func PullNode(settings *yaml.Yaml) (rc *redis.Client) {
 	redis_connection := settings.Get("redis_connection").(string)
-	redis_list := settings.Get("redis_list").(string)
-	redis_watch_interval := settings.Get("redis_watch_interval").(int)
-	redis_db := settings.Get("redis_db").(int)
-
-	t := time.Now()
-	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
 	rc, err := redis.DialTimeout("tcp", redis_connection, time.Duration(10)*time.Second)
 	s.CheckError(err, true)
-	r := rc.Cmd("SELECT", redis_db)
-
-	defer rc.Close()
-
-	for {
-		t = time.Now()
-		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-		r = rc.Cmd("RPOP", redis_list)
-
-		switch r.Type {
-		case redis.ErrorReply:
-			fmt.Printf("[%s] ERROR ErrorReply received: %s\n", ts, r.Err.Error())
-		case redis.NilReply:
-			if debug {
-				fmt.Printf("[%s] INFO NilReply reply received\n", ts)
-			}
-		case redis.StatusReply:
-			if debug {
-				fmt.Printf("[%s] INFO StatusReply reply received: not processing\n", ts)
-			}
-		case redis.BulkReply:
-			data, err := r.Bytes()
-			if err != nil {
-				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
-			} else {
-				// TODO: Clean up error printing
-				err := Send(ts, data, settings, senders)
-				if err != nil {
-					fmt.Printf(err.Error())
-				}
-			}
-		case redis.MultiReply:
-			if debug {
-				fmt.Printf("[%s] INFO MultiReply reply received: not processing\n", ts)
-			}
-		case redis.IntegerReply:
-			if debug {
-				fmt.Printf("[%s] INFO IntegerReply reply received: not processing\n", ts)
-			}
-		default:
-			if debug {
-				fmt.Printf("[%s] INFO Unknown reply received: not processing\n", ts)
-			}
-		}
-
-		time.Sleep(time.Duration(redis_watch_interval) * time.Millisecond)
-	}
-
+	return rc
 }
 
-func PullCluster(settings *yaml.Yaml, senders []string) {
-
-	debug := settings.Get("debug").(bool)
+func PullCluster(settings *yaml.Yaml) (rc *cluster.Cluster) {
 	redis_connection := settings.Get("redis_connection").(string)
-	redis_list := settings.Get("redis_list").(string)
-	redis_watch_interval := settings.Get("redis_watch_interval").(int)
-
-	t := time.Now()
-	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
 	rc, err := cluster.NewClusterTimeout(redis_connection, time.Duration(10)*time.Second)
-	r := rc.Cmd("SELECT", 0)
 	s.CheckError(err, true)
-
-	defer rc.Close()
-
-	for {
-		t = time.Now()
-		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-		r = rc.Cmd("RPOP", redis_list)
-
-		switch r.Type {
-		case redis.ErrorReply:
-			fmt.Printf("[%s] ERROR ErrorReply received: %s\n", ts, r.Err.Error())
-		case redis.NilReply:
-			if debug {
-				fmt.Printf("[%s] INFO NilReply reply received\n", ts)
-			}
-		case redis.StatusReply:
-			if debug {
-				fmt.Printf("[%s] INFO StatusReply reply received: not processing\n", ts)
-			}
-		case redis.BulkReply:
-			data, err := r.Bytes()
-			if debug {
-				fmt.Printf("[%s] INFO BulkReply reply received. Data length %d\n", ts, len(data))
-			}
-			if err != nil {
-				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
-			} else {
-				// TODO: Clean up error printing
-				err := Send(ts, data, settings, senders)
-				if err != nil {
-					fmt.Printf(err.Error())
-				}
-			}
-		case redis.MultiReply:
-			if debug {
-				fmt.Printf("[%s] INFO MultiReply reply received: not processing\n", ts)
-			}
-		case redis.IntegerReply:
-			if debug {
-				fmt.Printf("[%s] INFO IntegerReply reply received: not processing\n", ts)
-			}
-		default:
-			if debug {
-				fmt.Printf("[%s] INFO Unknown reply received: not processing\n", ts)
-			}
-		}
-
-		time.Sleep(time.Duration(redis_watch_interval) * time.Millisecond)
-	}
-
+	return rc
 }
 
 func main() {
@@ -195,7 +83,7 @@ func main() {
 
 	settings, err := yaml.Open(yml_config_file)
 	s.CheckError(err, true)
-
+	debug := settings.Get("debug").(bool)
 	senders := make([]string, 0)
 
 	k := settings.Get("sends")
@@ -207,20 +95,91 @@ func main() {
 
 	// There's probably a better way to do this
 	redis_is_cluster := settings.Get("redis_is_cluster").(bool)
+	redis_list := settings.Get("redis_list").(string)
+	redis_watch_interval := settings.Get("redis_watch_interval").(int)
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
-	debug := settings.Get("debug").(bool)
-	// Cluster mode
+	var rClient *redis.Client
+	var rCluster *cluster.Cluster
 	if redis_is_cluster {
 		if debug {
 			fmt.Printf("[%s] INFO Starting up in cluster mode\n", ts)
 		}
-		PullCluster(settings, senders)
+		rCluster = PullCluster(settings)
+		defer rCluster.Close()
 	} else {
+		redis_db := settings.Get("redis_db").(int)
 		if debug {
 			fmt.Printf("[%s] INFO Starting up in single node mode\n", ts)
 		}
-		PullNode(settings, senders)
+		rClient = PullNode(settings)
+		defer rClient.Close()
+		rClient.Cmd("SELECT", redis_db)
+	}
+	var r *redis.Reply
+	if redis_is_cluster {
+		r = rCluster.Cmd("RPOP", redis_list)
+	} else {
+		r = rClient.Cmd("RPOP", redis_list)
+	}
+	for {
+		if redis_is_cluster {
+			r = rCluster.Cmd("RPOP", redis_list)
+		} else {
+			r = rClient.Cmd("RPOP", redis_list)
+		}
+		t = time.Now()
+		ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
+
+		// If the response from redis is actual data, process and then pop another response off
+		// If not, who cares, go through the old switch case
+		for (r.Type == redis.BulkReply) {
+			t = time.Now()
+			ts = t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
+			data, err := r.Bytes()
+			if debug {
+				fmt.Printf("[%s] INFO BulkReply reply received. Data length %d\n", ts, len(data))
+			}
+			if err != nil {
+				fmt.Printf("[%s] ERROR Error received: %s\n", ts, err)
+			} else {
+				err := Send(ts, data, settings, senders)
+				if err != nil {
+					fmt.Printf(err.Error())
+				}
+			}
+			if redis_is_cluster {
+				r = rCluster.Cmd("RPOP", redis_list)
+			} else {
+				r = rClient.Cmd("RPOP", redis_list)
+			}
+		}
+		switch r.Type {
+		case redis.ErrorReply:
+			fmt.Printf("[%s] ERROR ErrorReply received: %s\n", ts, r.Err.Error())
+		case redis.NilReply:
+			if debug {
+				fmt.Printf("[%s] INFO NilReply reply received\n", ts)
+			}
+		case redis.StatusReply:
+			if debug {
+				fmt.Printf("[%s] INFO StatusReply reply received: not processing\n", ts)
+			}
+		case redis.MultiReply:
+			if debug {
+				fmt.Printf("[%s] INFO MultiReply reply received: not processing\n", ts)
+			}
+		case redis.IntegerReply:
+			if debug {
+				fmt.Printf("[%s] INFO IntegerReply reply received: not processing\n", ts)
+			}
+		default:
+			if debug {
+				fmt.Printf("[%s] INFO Unknown reply received: not processing\n", ts)
+			}
+		}
+
+		time.Sleep(time.Duration(redis_watch_interval) * time.Millisecond)
 	}
 
 }
